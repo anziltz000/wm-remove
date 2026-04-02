@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  wrem:
+    build: .
+    container_name: wrem-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"               # Cloudflare Tunnel points here
+    environment:
+      - DRIVE_FOLDER_ID=${DRIVE_FOLDER_ID}
+    volumes:
+      # Persistent storage survives container restarts
+      - ./storage:/app/storage
+      # Drop your credentials.json next to docker-compose.yml
+      - ./credentials.json:/app/credentials.json:ro
+    deploy:
+      resources:
+        limits:
+          memory: 1500m           # Oracle Free A1 has 24 GB but keep it sane
+
+  # Optional: uncomment to auto-update via Watchtower
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --interval 86400 wrem-app
