@@ -11,10 +11,11 @@ from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-# Google Drive
+# Google Drive - Updated for OAuth Token Authentication
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
-from google.oauth2 import service_account
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request as GoogleAuthRequest
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
@@ -29,7 +30,9 @@ PROCESSED_DIR  = BASE_DIR / "processed"
 for d in (UPLOAD_DIR, WATERMARK_DIR, PROCESSED_DIR):
     d.mkdir(parents=True, exist_ok=True)
 
-CREDENTIALS_PATH = Path("/app/credentials.json")
+# Pointing to the new OAuth token inside the persistent volume
+TOKEN_PATH       = BASE_DIR / "token.json"
+
 # Read folder ID from environment, or default to empty
 DRIVE_FOLDER_ID  = os.getenv("DRIVE_FOLDER_ID", "")
 MAX_AGE_DAYS     = 7
@@ -41,14 +44,22 @@ jobs: dict[str, dict] = {}
 app = FastAPI(title="WREM — Watermark & Upload Pipeline")
 templates = Jinja2Templates(directory="templates")
 
-# ─── Google Drive Helper ─────────────────────────────────────────────────────
+# ─── Google Drive Helper (OAuth Token Version) ───────────────────────────────
 def get_drive_service():
-    if not CREDENTIALS_PATH.exists():
-        raise FileNotFoundError("credentials.json not found at /app/credentials.json")
-    creds = service_account.Credentials.from_service_account_file(
-        str(CREDENTIALS_PATH),
-        scopes=["https://www.googleapis.com/auth/drive.file"],
+    if not TOKEN_PATH.exists():
+        raise FileNotFoundError(f"token.json not found at {TOKEN_PATH}! Please run the auth.py script.")
+    
+    creds = Credentials.from_authorized_user_file(
+        str(TOKEN_PATH), 
+        scopes=["https://www.googleapis.com/auth/drive.file"]
     )
+    
+    # Automatically refresh the token if it has expired
+    if creds and creds.expired and creds.refresh_token:
+        creds.refresh(GoogleAuthRequest())
+        with open(TOKEN_PATH, "w") as token_file:
+            token_file.write(creds.to_json())
+            
     return build("drive", "v3", credentials=creds, cache_discovery=False)
 
 
