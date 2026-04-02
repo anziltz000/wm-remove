@@ -20,7 +20,7 @@ from google.auth.transport.requests import Request as GoogleAuthRequest
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger(__name__)
 
-# ─── Dirs ────────────────────────────────────────────────────────────────────
+# ─── Config & Directories ────────────────────────────────────────────────────
 BASE_DIR       = Path("/app/storage")
 UPLOAD_DIR     = BASE_DIR / "uploads"
 WATERMARK_DIR  = BASE_DIR / "watermark"
@@ -33,8 +33,11 @@ TOKEN_PATH       = BASE_DIR / "token.json"
 DRIVE_FOLDER_ID  = os.getenv("DRIVE_FOLDER_ID", "")
 MAX_AGE_DAYS     = 7
 
+# NEW: Global Lock to prevent CPU overload with multiple simultaneous uploads
+processing_lock = asyncio.Lock()
+
 jobs: dict[str, dict] = {}
-app = FastAPI(title="WREM — GreenScreen Freeze-Frame Pipeline")
+app = FastAPI(title="WREM — Stable Queue Pipeline")
 templates = Jinja2Templates(directory="templates")
 
 # ─── Google Drive Helper ─────────────────────────────────────────────────────
@@ -64,25 +67,15 @@ def sanitise(name: str) -> str:
     stem = re.sub(r"\s+", "_", stem).strip("_")
     return stem or "video"
 
-# ─── FFmpeg Green Screen + Freeze Last Frame ─────────────────────────────────
+# ─── FFmpeg Green Screen + Freeze Frame Logic ────────────────────────────────
 async def run_ffmpeg(input_path: Path, logo_video_path: Path, output_path: Path) -> tuple[bool, str]:
-    """
-    1. Removes green screen (chromakey)
-    2. Pads the logo video by cloning the last frame indefinitely (tpad)
-    3. Scales logo to match main video size
-    4. Overlays onto main video
-    """
     cmd = [
         "ffmpeg", "-y",
         "-i", str(input_path),
         "-i", str(logo_video_path),
         "-filter_complex", 
-        # 1. Chromakey: Remove green (0x00FF00)
-        # 2. Tpad: Clone the last frame (stop_mode=clone) indefinitely (stop=-1)
         "[1:v]colorkey=0x00FF00:0.1:0.1,tpad=stop_mode=clone:stop=-1[keyed];" 
-        # 3. Scale keyed/padded logo to match the base video resolution
         "[keyed][0:v]scale2ref=w=iw:h=ih[logo][base];"
-        # 4. Overlay logo on base, stop when the main video (shortest=1) finishes
         "[base][logo]overlay=0:0:shortest=1",
         "-c:v", "libx264",
         "-crf", "18",
@@ -93,62 +86,63 @@ async def run_ffmpeg(input_path: Path, logo_video_path: Path, output_path: Path)
         str(output_path),
     ]
     proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
     )
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
         return False, stderr.decode(errors="replace")
     return True, ""
 
-# ─── Background Worker ───────────────────────────────────────────────────────
+# ─── Background Worker with Queue Lock ───────────────────────────────────────
 async def process_job(job_id: str, watermark_path: Path):
-    job = jobs[job_id]
-    for entry in job["files"]:
-        name    = entry["name"]
-        src     = UPLOAD_DIR / job_id / name
-        safe    = sanitise(name)
-        out_name = f"(Wrem)_{safe}_og_{Path(name).stem}.mp4"
-        out     = PROCESSED_DIR / job_id / out_name
+    # The 'async with' ensures that if 100 people upload, they wait in a neat line
+    async with processing_lock:
+        job = jobs[job_id]
+        log.info("[%s] Lock acquired. Starting batch processing...", job_id)
+        
+        for entry in job["files"]:
+            name    = entry["name"]
+            src     = UPLOAD_DIR / job_id / name
+            safe    = sanitise(name)
+            out_name = f"(Wrem)_{safe}_og_{Path(name).stem}.mp4"
+            out     = PROCESSED_DIR / job_id / out_name
 
-        out.parent.mkdir(parents=True, exist_ok=True)
-        entry["status"] = "processing"
-        log.info("[%s] FFmpeg processing (Freeze-Frame) → %s", job_id, out_name)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            entry["status"] = "processing"
+            log.info("[%s] Rendering: %s", job_id, out_name)
 
-        ok, err = await run_ffmpeg(src, watermark_path, out)
-        if not ok:
-            entry["status"] = "failed"
-            entry["error"]  = err[:300]
-            log.error("[%s] FFmpeg failed: %s", job_id, err[:200])
-            continue
-
-        if DRIVE_FOLDER_ID:
-            try:
-                entry["status"] = "uploading"
-                drive_id = upload_to_drive(out, DRIVE_FOLDER_ID)
-                log.info("[%s] Uploaded → Drive ID: %s", job_id, drive_id)
-                out.unlink(missing_ok=True)
-                entry["status"] = "uploaded"
-            except Exception as exc:
+            ok, err = await run_ffmpeg(src, watermark_path, out)
+            if not ok:
                 entry["status"] = "failed"
-                entry["error"]  = str(exc)[:300]
-                log.error("[%s] Upload failed: %s", job_id, exc)
-        else:
-            entry["status"] = "done"
+                entry["error"]  = err[:300]
+                log.error("[%s] FFmpeg error: %s", job_id, err[:150])
+                continue
 
-        src.unlink(missing_ok=True)
-    log.info("[%s] Job completely finished.", job_id)
+            if DRIVE_FOLDER_ID:
+                try:
+                    entry["status"] = "uploading"
+                    upload_to_drive(out, DRIVE_FOLDER_ID)
+                    out.unlink(missing_ok=True)
+                    entry["status"] = "uploaded"
+                    log.info("[%s] Finished & Uploaded: %s", job_id, out_name)
+                except Exception as exc:
+                    entry["status"] = "failed"
+                    entry["error"]  = str(exc)[:300]
+            else:
+                entry["status"] = "done"
 
-# ─── Housekeeping & Routing (Standard) ───────────────────────────────────────
+            src.unlink(missing_ok=True)
+            
+        log.info("[%s] Batch complete. Releasing lock.", job_id)
+
+# ─── Standard App Logic ──────────────────────────────────────────────────────
 async def cleanup_old_files():
     while True:
         cutoff = datetime.utcnow() - timedelta(days=MAX_AGE_DAYS)
         for d in (UPLOAD_DIR, PROCESSED_DIR, WATERMARK_DIR):
-            for path in d.rglob("*"):
-                if path.is_file():
-                    mtime = datetime.utcfromtimestamp(path.stat().st_mtime)
-                    if mtime < cutoff:
+            if d.exists():
+                for path in d.rglob("*"):
+                    if path.is_file() and datetime.utcfromtimestamp(path.stat().st_mtime) < cutoff:
                         path.unlink(missing_ok=True)
         await asyncio.sleep(3600)
 
@@ -202,8 +196,7 @@ async def flush_storage():
     count = 0
     for d in (UPLOAD_DIR, PROCESSED_DIR, WATERMARK_DIR):
         for p in d.rglob("*"):
-            if p.is_file():
-                p.unlink(missing_ok=True); count += 1
+            if p.is_file(): p.unlink(missing_ok=True); count += 1
     jobs.clear()
     return JSONResponse({"message": f"Flushed {count} files."})
 
