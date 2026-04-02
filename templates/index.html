@@ -31,7 +31,6 @@
       overflow-x: hidden;
     }
 
-    /* Scanline texture */
     body::before {
       content: '';
       position: fixed; inset: 0;
@@ -45,7 +44,6 @@
       pointer-events: none; z-index: 999;
     }
 
-    /* Header */
     header {
       display: flex; align-items: center; justify-content: space-between;
       padding: 1.2rem 2.5rem;
@@ -67,14 +65,12 @@
       letter-spacing: .08em;
     }
 
-    /* Layout */
     main {
       max-width: 900px;
       margin: 0 auto;
       padding: 2.5rem 1.5rem 5rem;
     }
 
-    /* Section headers */
     .section-label {
       font-family: var(--mono);
       font-size: .65rem;
@@ -90,7 +86,6 @@
       background: linear-gradient(90deg, var(--border), transparent);
     }
 
-    /* Cards */
     .card {
       background: var(--surface);
       border: 1px solid var(--border);
@@ -100,7 +95,6 @@
     }
     .card:hover { border-color: var(--muted); }
 
-    /* Drop zones */
     .drop-zone {
       border: 1px dashed var(--muted);
       border-radius: 3px;
@@ -129,7 +123,6 @@
       color: var(--text-dim); margin-top: .4rem;
     }
 
-    /* File pill list */
     #selected-files, #selected-wm {
       display: flex; flex-wrap: wrap; gap: .4rem;
       margin-top: .75rem; min-height: 0;
@@ -145,7 +138,6 @@
     }
     .pill .pill-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 
-    /* Buttons */
     .btn {
       display: inline-flex; align-items: center; gap: .5rem;
       font-family: var(--mono); font-size: .78rem;
@@ -176,7 +168,6 @@
       margin-top: 1.5rem; align-items: center;
     }
 
-    /* Status table */
     .status-table { width: 100%; border-collapse: collapse; }
     .status-table th {
       text-align: left;
@@ -206,7 +197,6 @@
     .badge-done      { background: rgba(0,230,118,.1); color: #00e676; border: 1px solid #004d22; }
     .badge-failed    { background: rgba(255,61,113,.1); color: var(--accent2); border: 1px solid #660028; }
 
-    /* Job summary bar */
     .job-bar {
       display: flex; align-items: center; gap: 1.5rem;
       background: var(--border); border-radius: 3px;
@@ -218,7 +208,6 @@
     .job-bar .jb-num { color: var(--text); }
     .job-bar .jb-label { color: var(--text-dim); }
 
-    /* Progress ring / spinner */
     @keyframes spin { to { transform: rotate(360deg); } }
     .spinner {
       display: inline-block; width: 14px; height: 14px;
@@ -229,14 +218,12 @@
       vertical-align: middle;
     }
 
-    /* Error snippet */
     .err-snip {
       font-family: var(--mono); font-size: .65rem;
       color: var(--accent2); max-width: 360px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
-    /* Toast */
     #toast {
       position: fixed; bottom: 2rem; right: 2rem;
       background: var(--surface); border: 1px solid var(--border);
@@ -250,7 +237,6 @@
     #toast.show { transform: translateY(0); opacity: 1; }
     #toast.error { border-left-color: var(--accent2); }
 
-    /* Back link */
     .back-link {
       display: inline-flex; align-items: center; gap: .4rem;
       font-family: var(--mono); font-size: .7rem;
@@ -260,7 +246,6 @@
     }
     .back-link:hover { color: var(--accent); }
 
-    /* Responsive */
     @media (max-width: 600px) {
       header { padding: 1rem; }
       main { padding: 1.5rem 1rem 4rem; }
@@ -318,18 +303,18 @@
   </div>
 
 {% else %}
-<div class="section-label">01 · Watermark</div>
+<div class="section-label">01 · Watermark / Logo Video</div>
   <div class="card">
     <div class="drop-zone" id="wm-zone">
-      <input type="file" id="wm-input" name="watermark" accept=".png,image/png" required />
-      <span class="drop-icon">🖼</span>
-      <div class="drop-label"><strong>Drop watermark PNG here</strong> or click to browse</div>
-      <div class="file-hint">1080 × 1920 · transparent PNG</div>
+      <input type="file" id="wm-input" name="watermark" accept=".png,image/png,video/mp4,.mp4" required />
+      <span class="drop-icon">🎬</span>
+      <div class="drop-label"><strong>Drop PNG or Green Screen MP4 here</strong> or click to browse</div>
+      <div class="file-hint">Last frame will freeze for the duration of content</div>
     </div>
     <div id="selected-wm"></div>
   </div>
 
-  <div class="section-label">02 · Videos</div>
+  <div class="section-label">02 · Content Videos</div>
   <div class="card">
     <div class="drop-zone" id="vid-zone">
       <input type="file" id="vid-input" name="videos" accept="video/mp4,.mp4" multiple required />
@@ -343,12 +328,12 @@
   <div class="section-label">03 · Submit</div>
   <div class="card" style="border-color: rgba(0,229,255,.15);">
     <div style="font-size:.85rem; color:var(--text-dim); line-height:1.7;">
-      Videos will be processed in the background. You'll be taken to a live status page.<br>
-      Output filename format: <span style="font-family:var(--mono);color:var(--accent);font-size:.78rem;">(Wrem)_cleanname_og_originalname.mp4</span>
+      Videos will be processed with chroma-key and freeze-frame padding.<br>
+      Output format: <span style="font-family:var(--mono);color:var(--accent);font-size:.78rem;">(Wrem)_cleanname_og_originalname.mp4</span>
     </div>
     <div class="btn-row">
       <button class="btn btn-primary" id="submit-btn" type="button" onclick="submitForm()">
-        ▶ Process Videos
+        ▶ Start Processing
       </button>
       <button class="btn btn-danger" type="button" onclick="flush()">⚠ Flush Storage</button>
       <span id="flush-result" style="font-family:var(--mono);font-size:.72rem;color:var(--text-dim);"></span>
@@ -366,7 +351,6 @@
 <div id="toast"></div>
 
 <script>
-// ─── Toast ─────────────────────────────────────────────────────────────────
 function toast(msg, isError=false) {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -374,7 +358,6 @@ function toast(msg, isError=false) {
   setTimeout(() => el.className = '', 3000);
 }
 
-// ─── Upload form logic ──────────────────────────────────────────────────────
 {% if not job_id %}
 const wmInput  = document.getElementById('wm-input');
 const vidInput = document.getElementById('vid-input');
@@ -396,7 +379,6 @@ vidInput.addEventListener('change', () => {
   renderPills(vidInput.files, document.getElementById('selected-files'));
 });
 
-// Drag styles
 ['wm-zone', 'vid-zone'].forEach(id => {
   const z = document.getElementById(id);
   z.addEventListener('dragover', e => { e.preventDefault(); z.classList.add('drag-over'); });
@@ -407,10 +389,9 @@ vidInput.addEventListener('change', () => {
 function submitForm() {
   const wm   = wmInput.files;
   const vids = vidInput.files;
-  if (!wm.length)   { toast('Select a watermark PNG first', true); return; }
-  if (!vids.length) { toast('Select at least one MP4', true); return; }
+  if (!wm.length)   { toast('Select a logo/video first', true); return; }
+  if (!vids.length) { toast('Select at least one content video', true); return; }
 
-  // Transfer to hidden form and submit
   const formData = new FormData();
   formData.append('watermark', wm[0]);
   Array.from(vids).forEach(f => formData.append('videos', f));
@@ -421,11 +402,10 @@ function submitForm() {
 
   fetch('/process', { method: 'POST', body: formData })
     .then(r => { window.location.href = r.url; })
-    .catch(e => { toast('Upload error: ' + e, true); btn.disabled = false; btn.textContent = '▶ Process Videos'; });
+    .catch(e => { toast('Upload error: ' + e, true); btn.disabled = false; btn.textContent = '▶ Start Processing'; });
 }
 {% endif %}
 
-// ─── Flush ─────────────────────────────────────────────────────────────────
 async function flush() {
   if (!confirm('Delete all local files and clear job history?')) return;
   try {
@@ -437,7 +417,6 @@ async function flush() {
   } catch(e) { toast('Flush error: ' + e, true); }
 }
 
-// ─── Live polling (status page) ─────────────────────────────────────────────
 {% if job_id %}
 const JOB_ID = "{{ job_id }}";
 const TOTAL  = {{ job.files | length }};
@@ -471,7 +450,6 @@ async function pollStatus() {
         badge.className = 'badge ' + (STATUS_CLASSES[f.status] || 'badge-pending');
       }
 
-      // Show spinner inline for active states
       if (f.status === 'processing' || f.status === 'uploading') {
         if (!cells[2].querySelector('.spinner')) {
           const sp = document.createElement('span');
@@ -498,7 +476,7 @@ async function pollStatus() {
     if (done + failed === TOTAL) {
       ob.textContent = failed ? `${failed} failed` : 'All complete ✓';
       ob.className = 'badge ' + (failed ? 'badge-failed' : 'badge-done');
-      return; // stop polling
+      return; 
     } else {
       ob.textContent = `${inProgress} active`;
       ob.className = 'badge badge-processing';
