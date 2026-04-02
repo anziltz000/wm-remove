@@ -401,8 +401,21 @@ function submitForm() {
   btn.textContent = '⏳ Uploading…';
 
   fetch('/process', { method: 'POST', body: formData })
-    .then(r => { window.location.href = r.url; })
-    .catch(e => { toast('Upload error: ' + e, true); btn.disabled = false; btn.textContent = '▶ Start Processing'; });
+    .then(response => response.json())
+    .then(data => {
+      if (data.redirect_url) {
+        window.location.href = data.redirect_url;
+      } else {
+        toast('Upload failed', true);
+        btn.disabled = false;
+        btn.textContent = '▶ Start Processing';
+      }
+    })
+    .catch(e => { 
+      toast('Upload error: ' + e, true); 
+      btn.disabled = false; 
+      btn.textContent = '▶ Start Processing';
+    });
 }
 {% endif %}
 
