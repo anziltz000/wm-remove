@@ -33,6 +33,7 @@ TOKEN_PATH       = BASE_DIR / "token.json"
 DRIVE_FOLDER_ID  = os.getenv("DRIVE_FOLDER_ID", "")
 MAX_AGE_DAYS     = 7
 
+# Global Lock ensures only ONE video processes at a time (prevents 9+ file crashes)
 processing_lock = asyncio.Lock()
 jobs: dict[str, dict] = {}
 
@@ -132,6 +133,8 @@ async def start_process(
 
     jobs[job_id] = {"files": file_entries}
     background_tasks.add_task(process_job, job_id, wm_path)
+    
+    # JSONResponse prevents the 405 Method Not Allowed error
     return JSONResponse({"redirect_url": f"/status/{job_id}"})
 
 @app.get("/status/{job_id}", response_class=HTMLResponse)
